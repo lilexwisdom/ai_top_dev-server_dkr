@@ -1,0 +1,30 @@
+# 키 인증 전용 sshd 설정 — 비밀번호 로그인 차단
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+ListenAddress ::
+
+# 호스트 키는 named volume(/etc/ssh/keys)에 저장 → 컨테이너 재빌드 시에도 동일
+HostKey /etc/ssh/keys/ssh_host_ed25519_key
+HostKey /etc/ssh/keys/ssh_host_rsa_key
+
+# 인증
+PubkeyAuthentication yes
+PasswordAuthentication no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+
+PermitRootLogin no
+AllowAgentForwarding yes
+AllowTcpForwarding yes
+X11Forwarding no
+PrintMotd no
+
+AcceptEnv LANG LC_*
+Subsystem	sftp	/usr/lib/openssh/sftp-server
+
+# VS Code Remote-SSH가 짧은 비활성에도 끊기지 않도록
+ClientAliveInterval 60
+ClientAliveCountMax 3

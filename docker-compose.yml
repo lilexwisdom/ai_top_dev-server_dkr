@@ -1,0 +1,84 @@
+# DGX Spark 단독사용자 dev/finetune 스택 — temp_ollama-net 외부 네트워크에 attach
+name: devstack
+
+networks:
+  ollama-net:
+    name: temp_ollama-net
+    external: true
+
+volumes:
+  dev-uv-cache: {}
+  dev-pnpm-store: {}
+  dev-vscode-server: {}
+  dev-sshd-keys: {}
+  ft-hf-cache: {}
+
+services:
+  dev:
+    build:
+      context: ./dev
+      args:
+        USERNAME: ${USERNAME:-dev}
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+        DOCKER_GID: ${DOCKER_GID:-988}
+    image: devstack-dev:local
+    container_name: dev
+    hostname: dev
+    init: true
+    networks: [ollama-net]
+    ports:
+      - "127.0.0.1:2222:22"
+      - "${TAILSCALE_IP:?TAILSCALE_IP must be set in .env}:2222:22"
+      # LAN까지 허용하려면 .env의 LAN_IP를 풀고 아래 한 줄 주석 해제.
+      # - "${LAN_IP}:2222:22"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_BASE=http://ollama:11434/v1
+      - OPENAI_API_KEY=ollama
+      - WHISPER_BASE_URL=http://whisper:8000/v1
+    volumes:
+      # 워크스페이스만 격리 마운트. ~/Projects의 다른 폴더(공유 인프라)는 컨테이너에 안 보임.
+      # 호스트 경로 = 컨테이너 경로 일치 → 도구 출력의 경로 문자열이 어디서 봐도 동일.
+      - ${HOME}/Projects/dev-workspace:/home/${USERNAME:-dev}/Projects/dev-workspace
+      - ${HOME}/.ssh/authorized_keys:/home/${USERNAME:-dev}/.ssh/authorized_keys:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - dev-uv-cache:/home/${USERNAME:-dev}/.cache/uv
+      - dev-pnpm-store:/home/${USERNAME:-dev}/.local/share/pnpm
+      - dev-vscode-server:/home/${USERNAME:-dev}/.vscode-server
+      - dev-sshd-keys:/etc/ssh/keys
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn 2>/dev/null | grep -q ':22 '"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  finetune:
+    build:
+      context: ./finetune
+      args:
+        USERNAME: ${USERNAME:-dev}
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+    image: devstack-finetune:local
+    container_name: finetune
+    runtime: nvidia
+    # NVIDIA 권장: 큰 모델 학습 시 SHM/ulimit 여유 필요
+    ipc: host
+    shm_size: "16gb"
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_HOME=/home/${USERNAME:-dev}/.cache/huggingface
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - ${HOME}/Projects/dev-workspace:/home/${USERNAME:-dev}/Projects/dev-workspace
+      - ft-hf-cache:/home/${USERNAME:-dev}/.cache/huggingface
+    networks: [ollama-net]
+    profiles: ["ft"]
+    command: ["sleep", "infinity"]
+    restart: "no"
