@@ -172,7 +172,28 @@ docker exec $(whoami)-dev curl -s -o /dev/null -w "whisper: %{http_code}\n" http
 ssh -p 2223 <userA>@<HOST_IP>     # 본인 포트로
 ```
 
-VS Code Remote-SSH도 같은 host string으로 접속. 셋업 끝.
+VS Code Remote-SSH도 같은 host string으로 접속.
+
+---
+
+## 10단계 — 본인 작업 프로젝트 clone
+
+dev 컨테이너의 작업 영역은 호스트의 `~/Projects/dev-workspace`와 동일 경로로 1:1 마운트돼 있음. 본인 작업 repo는 거기에 두면 호스트와 컨테이너 양쪽에서 같은 경로로 보임.
+
+```bash
+# 호스트에서든 컨테이너 안에서든 어느 쪽이든 OK (같은 폴더)
+cd ~/Projects/dev-workspace
+git clone <본인 작업 repo URL>
+```
+
+컨테이너에 SSH 진입 후 작업 경로 — `/home/<USER>/Projects/dev-workspace/<프로젝트>`. VS Code Remote-SSH로도 같은 폴더 열기.
+
+**주의**
+
+- `dev-server_dkr`(이 인프라 repo)은 절대 `dev-workspace` 안에 두지 말 것. 별개로 호스트의 `~/dev-server_dkr`에 둔 채 호스트에서 직접 편집.
+- `dev-workspace` 바깥의 호스트 폴더는 컨테이너에서 보이지 않음. 다른 사용자도 의존하는 공유 인프라(`ollama-whisper-webui_dkr` 등)를 사고로부터 보호하기 위한 격리.
+
+이걸로 셋업 끝. 본인 프로젝트에서 작업 시작.
 
 ---
 
