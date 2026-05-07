@@ -182,15 +182,15 @@ docker run --rm --device nvidia.com/gpu=all nvcr.io/nvidia/pytorch:25.11-py3 nvi
 # repo clone & 첫 기동
 cd ~ && git clone <repo> dev-server_dkr && cd dev-server_dkr
 cp .env.example .env
-# .env에 본인 값 작성 (예: <userA>)
-#   USERNAME=<userA>
-#   USER_UID=1001
-#   USER_GID=1001
-#   DOCKER_GID=$(id -g)                        # rootless라 본인 GID
+# .env에 본인 값 작성
+#   USERNAME=<본인 계정명>
+#   USER_UID=<id -u>
+#   USER_GID=<id -g>
+#   DOCKER_GID=<id -g>                         # rootless라 본인 GID
 #   DOCKER_SOCK=/run/user/$(id -u)/docker.sock
-#   SSH_PORT_LOCAL=2223                        # 사용자별 분배
-#   SSH_PORT_TS=2223
-#   TAILSCALE_IP=<HOST_IP>                   # 호스트 단위라 모두 동일
+#   SSH_PORT_LOCAL=<관리자에게 받은 포트>      # 사용자별 분배
+#   SSH_PORT_TS=<관리자에게 받은 포트>
+#   TAILSCALE_IP=<관리자에게 받기>             # 호스트 단위라 모두 동일
 
 mkdir -p ~/Projects/dev-workspace
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
