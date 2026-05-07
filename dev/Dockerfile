@@ -36,9 +36,16 @@ RUN if id -u vscode >/dev/null 2>&1; then userdel -r vscode 2>/dev/null || true;
  && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} \
  && chmod 0440 /etc/sudoers.d/${USERNAME}
 
-# 호스트 docker 그룹 GID와 일치하는 그룹 추가 후 사용자 가입 (호스트 docker.sock 접근용)
-RUN groupadd -g ${DOCKER_GID} hostdocker 2>/dev/null || true \
- && usermod -aG hostdocker ${USERNAME}
+# 호스트 docker 그룹 GID와 일치하는 그룹 추가 후 사용자 가입 (호스트 docker.sock 접근용).
+# DOCKER_GID == USER_GID인 경우(rootless dockerd 사용자 패턴)에는 socket이 본인 소유라
+# 별도 그룹 가입이 불필요. 이때 같은 GID로 그룹을 또 만들면 충돌하므로 skip.
+RUN if [ "${DOCKER_GID}" != "${USER_GID}" ]; then \
+      if ! getent group ${DOCKER_GID} >/dev/null; then \
+        groupadd -g ${DOCKER_GID} hostdocker; \
+      fi; \
+      existing=$(getent group ${DOCKER_GID} | cut -d: -f1); \
+      usermod -aG "${existing}" ${USERNAME}; \
+    fi
 
 # uv (Python 패키지/벤브 통합 도구, ARM64 정적 바이너리)
 RUN curl -LsSf https://astral.sh/uv/install.sh \
