@@ -5,7 +5,12 @@ DGX Spark에서 본인 계정으로 dev 컨테이너를 띄우는 가장 짧은 
 
 > 이 문서의 IP·사용자명·포트는 placeholder. 실제 값(Tailscale IP, LAN IP, 본인에게 할당된 SSH 포트)은 호스트 관리자(lilexwisdom)에게 별도 채널로 받기.
 
-> Claude Code로 자동 진행하고 싶다면 한 줄만 — `docs/user-rootless-setup.md를 읽고 절차대로 셋업해줘`. 아래는 손으로 직접 따라할 때.
+> Claude Code로 자동 진행하고 싶다면.
+> 1. 본인 계정으로 호스트에 SSH 진입한 뒤
+> 2. `git clone https://github.com/lilexwisdom/ai_top_dev-server_dkr.git ~/dev-server_dkr && cd ~/dev-server_dkr`
+> 3. Claude Code 세션에서 한 줄 — `docs/user-rootless-setup.md를 읽고 절차대로 셋업해줘`
+>
+> 아래는 손으로 직접 따라할 때.
 
 ---
 
