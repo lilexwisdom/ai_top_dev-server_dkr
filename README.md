@@ -140,7 +140,7 @@ LAN까지 허용하려면 `docker-compose.yml`의 `${LAN_IP}:2222:22` 주석 해
 
 호스트 docker 그룹에 추가하지 않고, 각 사용자가 본인 systemd --user 단위로 개별 dockerd를 굴리는 방식. 호스트 dockerd는 무손상.
 
-> 사용자 계정에서 Claude Code로 셋업한다면 [`docs/user-rootless-setup.md`](docs/user-rootless-setup.md)를 읽게 하면 단계별 검증 포함 runbook으로 진행 가능.
+> 손으로 따라할 거면 [`Quick_setup.md`](Quick_setup.md). Claude Code로 자동 진행할 거면 [`docs/user-rootless-setup.md`](docs/user-rootless-setup.md) (검증 포함 runbook).
 
 ### 한 번만 — 시스템 관리자 (lilexwisdom 또는 root)
 
