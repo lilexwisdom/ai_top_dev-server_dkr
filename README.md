@@ -1,9 +1,9 @@
-<!-- DGX Spark 단독사용자 dev/finetune Docker 스택 사용 안내 -->
+<!-- DGX Spark dev/finetune Docker 스택 사용 안내 (다중 사용자 지원) -->
 # dev-server_dkr
 
-DGX Spark(NVIDIA GB10, ARM64+CUDA)에서 단독 사용자가 코딩(Python/Next.js/Supabase) + AI 파인튜닝을 동시에 굴리기 위한 Docker 스택.
+DGX Spark(NVIDIA GB10, ARM64+CUDA)에서 코딩(Python/Next.js/Supabase) + AI 파인튜닝을 굴리기 위한 Docker 스택.
 
-호스트에 이미 동작 중인 **`temp_ollama-net`** bridge에 attach 하여 `ollama:11434`와 `whisper:8000`(OpenAI 호환 `/v1`)을 컨테이너 DNS로 직접 호출.
+호스트의 ollama/whisper 컨테이너가 publish한 포트를 **`host.docker.internal`** 로 호출. 이 방식으로 호스트 dockerd 사용자(lilexwisdom)와 일반 사용자별 rootless dockerd가 동일 compose로 동작.
 
 ## 구성
 
@@ -14,7 +14,7 @@ DGX Spark(NVIDIA GB10, ARM64+CUDA)에서 단독 사용자가 코딩(Python/Next.
 
 - DGX Spark(또는 ARM64+NVIDIA) 호스트.
 - Docker 28+ + NVIDIA 컨테이너 런타임.
-- `temp_ollama-net` 외부 네트워크가 살아있어야 함 (`docker network ls`).
+- 호스트의 `ollama` 컨테이너가 `:11434`, `whisper` 컨테이너가 `127.0.0.1:8000`로 publish 돼있어야 함.
 - 호스트 `~/.ssh/authorized_keys`에 본인 공개키 등록.
 - Tailscale 또는 LAN을 통해 접근 가능한 IP.
 
@@ -50,10 +50,10 @@ VS Code Remote-SSH는 같은 host string으로 접속.
 dev 컨테이너에 OpenAI 호환 환경변수가 미리 주입돼 있음.
 
 ```
-OLLAMA_BASE_URL=http://ollama:11434
-OPENAI_API_BASE=http://ollama:11434/v1
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OPENAI_API_BASE=http://host.docker.internal:11434/v1
 OPENAI_API_KEY=ollama
-WHISPER_BASE_URL=http://whisper:8000/v1
+WHISPER_BASE_URL=http://host.docker.internal:8000/v1
 ```
 
 aider 예시(컨테이너 안에서).
@@ -62,7 +62,7 @@ aider 예시(컨테이너 안에서).
 uv tool install aider-chat
 mkdir -p ~/.config/aider
 cat > ~/.aider.conf.yml <<'YAML'
-openai-api-base: http://ollama:11434/v1
+openai-api-base: http://host.docker.internal:11434/v1
 openai-api-key: ollama
 model: openai/gemma4:e4b
 YAML
@@ -136,19 +136,73 @@ LAN까지 허용하려면 `docker-compose.yml`의 `${LAN_IP}:2222:22` 주석 해
 
 **중요**. Docker `ports:`는 호스트 ufw를 우회한다. 인터페이스 바인딩 자체가 1차 방어선이므로 절대 `0.0.0.0:`로 바꾸지 말 것.
 
-## 다른 사용자가 이 repo를 재사용할 때
+## 같은 호스트의 일반 사용자가 본인 계정에서 띄울 때 (rootless docker)
 
-`USERNAME`이 build-arg 파라미터화돼있어 본인 환경에 맞게 재빌드만 하면 됨.
+호스트 docker 그룹에 추가하지 않고, 각 사용자가 본인 systemd --user 단위로 개별 dockerd를 굴리는 방식. 호스트 dockerd는 무손상.
+
+### 한 번만 — 시스템 관리자 (lilexwisdom 또는 root)
 
 ```bash
-git clone <repo> && cd dev-server_dkr
-cp .env.example .env
-# .env 의 USERNAME, USER_UID, USER_GID, DOCKER_GID, TAILSCALE_IP 본인 값으로
-docker compose build dev
-docker compose up -d dev
+# rootless docker 의존 패키지 + linger
+sudo apt install -y docker-ce-rootless-extras slirp4netns uidmap fuse-overlayfs
+sudo loginctl enable-linger <username1> <username2> ...
+
+# 호스트 dockerd의 whisper에 publish 추가 (ollama-whisper-webui_dkr/docker-compose.yml의 whisper에)
+# - 127.0.0.1: rootless docker 사용자 (slirp4netns가 호스트 lo로 매핑)
+# - 172.17.0.1: 호스트 dockerd 사용자 (docker0 게이트웨이) — `ip -4 addr show docker0`로 확인
+#   ports:
+#     - "127.0.0.1:8000:8000"
+#     - "172.17.0.1:8000:8000"
+# 그 후. cd ~/Projects/ollama-whisper-webui_dkr && docker compose up -d whisper
+
+# rootless GPU 전제 (finetune 사용자가 있으면)
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 ```
 
-이미지는 user-specific(host UID와 묶임)이므로 Docker Hub로 push하지 않는다. 각자 빌드.
+### 사용자별 — 본인 셸에서 1회
+
+```bash
+# rootless dockerd 설치
+dockerd-rootless-setuptool.sh install
+systemctl --user enable --now docker
+
+# 셸 환경 (영구화)
+echo 'export PATH=/usr/bin:$PATH' >> ~/.bashrc
+echo 'export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock' >> ~/.bashrc
+source ~/.bashrc
+docker info | grep -E "Rootless|Cgroup"      # Rootless: true 확인
+
+# (finetune 필요 시) GPU 활성화
+nvidia-ctk runtime configure --runtime=docker --config=$HOME/.config/docker/daemon.json
+systemctl --user restart docker
+docker run --rm --device nvidia.com/gpu=all nvcr.io/nvidia/pytorch:25.11-py3 nvidia-smi
+
+# repo clone & 첫 기동
+cd ~ && git clone <repo> dev-server_dkr && cd dev-server_dkr
+cp .env.example .env
+# .env에 본인 값 작성 (예: <userA>)
+#   USERNAME=<userA>
+#   USER_UID=1001
+#   USER_GID=1001
+#   DOCKER_GID=$(id -g)                        # rootless라 본인 GID
+#   DOCKER_SOCK=/run/user/$(id -u)/docker.sock
+#   SSH_PORT_LOCAL=2223                        # 사용자별 분배
+#   SSH_PORT_TS=2223
+#   TAILSCALE_IP=<HOST_IP>                   # 호스트 단위라 모두 동일
+
+mkdir -p ~/Projects/dev-workspace
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+# ~/.ssh/authorized_keys 본인 공개키 등록 필수
+
+docker compose build dev
+docker compose up -d dev
+
+# finetune이 필요한 경우
+docker compose --profile ft build finetune
+docker compose --profile ft up -d finetune
+```
+
+이미지는 user-specific(host UID와 묶임)이라 사용자별로 빌드. image tag(`devstack-dev:${USERNAME}`)와 container_name(`${USERNAME}-dev`)이 사용자별로 분리되므로 같은 호스트에서 다중 사용자가 충돌 없이 동시 운영 가능.
 
 ## 디렉토리
 
