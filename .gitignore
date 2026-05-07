@@ -12,6 +12,9 @@ CLAUDE.md
 checklist.md
 context-notes.md
 
+# 사용자별 인계용 메모 (실명·포트 등 PII 포함)
+handover/
+
 # 컨테이너 내부 캐시 (named volume이지만 혹시 bind될 경우 대비)
 .cache/
 .local/
