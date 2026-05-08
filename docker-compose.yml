@@ -24,10 +24,13 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "127.0.0.1:${SSH_PORT_LOCAL:-2222}:22"
-      - "${TAILSCALE_IP:?TAILSCALE_IP must be set in .env}:${SSH_PORT_TS:-2222}:22"
-      # LAN까지 허용하려면 .env의 LAN_IP를 풀고 아래 한 줄 주석 해제.
-      # - "${LAN_IP}:${SSH_PORT_LOCAL:-2222}:22"
+      # SSH는 Tailscale IP에만 publish. 호스트 자기 자신에서도 ssh -p PORT user@${TAILSCALE_IP}로 접속 가능
+      # (Tailscale이 자기 IP는 로컬 라우팅함). rootless docker는 같은 host port를 두 IP에 동시
+      # publish 못하는 limitation이 있어 dual-binding을 피함.
+      - "${TAILSCALE_IP:?TAILSCALE_IP must be set in .env}:${SSH_PORT_TS:-${SSH_PORT_LOCAL:-2222}}:22"
+      # LAN까지 허용하려면 .env의 LAN_IP를 풀고 아래 한 줄 주석 해제. 단, rootless dockerd는
+      # ${TAILSCALE_IP}와 ${LAN_IP}가 같은 포트면 이 줄도 충돌하므로 다른 포트를 쓰거나 한쪽만 사용.
+      # - "${LAN_IP}:${SSH_PORT_LAN:-2223}:22"
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OPENAI_API_BASE=http://host.docker.internal:11434/v1

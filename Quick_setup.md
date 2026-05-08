@@ -109,8 +109,8 @@ USER_UID=<id -u 결과>
 USER_GID=<id -g 결과>
 DOCKER_GID=<USER_GID와 동일>
 DOCKER_SOCK=/run/user/<UID>/docker.sock
-SSH_PORT_LOCAL=<할당된 포트>
 SSH_PORT_TS=<할당된 포트>
+SSH_PORT_LOCAL=<같은 포트, backward-compat용>
 TAILSCALE_IP=<관리자에게 받기>
 LAN_IP=<관리자에게 받기>
 ```
@@ -122,7 +122,8 @@ LAN_IP=<관리자에게 받기>
 - `USER_GID` — `id -g` (본인 환경에선 보통 USER_UID와 같음)
 - `DOCKER_GID` — `id -g` 그대로 (rootless에선 본인 GID 사용)
 - `DOCKER_SOCK` — `echo /run/user/$(id -u)/docker.sock`
-- `SSH_PORT_LOCAL`, `SSH_PORT_TS` — 호스트 관리자가 알려준 본인 포트
+- `SSH_PORT_TS` — 호스트 관리자가 알려준 본인 포트. compose는 이 값으로 Tailscale IP에 publish함
+- `SSH_PORT_LOCAL` — 같은 값으로 둬도 무방. 현재 compose는 이 변수를 직접 publish하지 않음 (rootless의 dual-publish limitation 때문). 호스트 자기 자신에서도 `ssh -p ${SSH_PORT_TS} <YOUR_USER>@${TAILSCALE_IP}`로 접속됨
 - `TAILSCALE_IP`, `LAN_IP` — 호스트 관리자에게 받기
 
 ---

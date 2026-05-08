@@ -128,11 +128,12 @@ dev/finetune 컨테이너는 호스트의 `~/Projects` 전체가 아닌 **`~/Pro
 기본 SSH 포트 매핑.
 
 ```
-127.0.0.1:2222   — 호스트 자기 자신
-${TAILSCALE_IP}:2222 — Tailscale 메시
+${TAILSCALE_IP}:${SSH_PORT_TS}  — Tailscale 메시 (호스트 자기 자신에서도 같은 IP로 접속됨)
 ```
 
-LAN까지 허용하려면 `docker-compose.yml`의 `${LAN_IP}:2222:22` 주석 해제. Caddy(HTTPS) 경유는 안 함 — 단독 사용자라 도메인/TLS 불필요.
+`127.0.0.1` 별도 publish는 안 함. rootless docker(rootlesskit-builtin)가 같은 host port를 두 IP에 동시 publish 못하는 limitation 때문에 dual-binding을 피했음. 호스트 자기 자신에서도 `ssh -p ${SSH_PORT_TS} <USER>@${TAILSCALE_IP}`로 접속 가능 (Tailscale이 자기 IP를 로컬 라우팅).
+
+LAN까지 허용하려면 `docker-compose.yml`의 `${LAN_IP}` 줄 주석 해제. 단, `${TAILSCALE_IP}`와 동일 포트면 rootless에서 충돌하므로 `SSH_PORT_LAN`을 별도 포트로 쓰기. Caddy(HTTPS) 경유는 안 함 — 단독 사용자라 도메인/TLS 불필요.
 
 **중요**. Docker `ports:`는 호스트 ufw를 우회한다. 인터페이스 바인딩 자체가 1차 방어선이므로 절대 `0.0.0.0:`로 바꾸지 말 것.
 
