@@ -247,6 +247,8 @@ main() {
     log_info "$username 을 포트 $port 로 backfill"
     backfill_port "$username" "$port"
     ensure_users_row "$username"
+    # setup.sh 가 읽을 부트스트랩 파일은 backfill에도 필요(컨테이너/dockerd엔 영향 없는 KV 파일)
+    write_user_bootstrap "$username" "$port"
     log_ok "backfill 완료. dockerd/컨테이너는 손대지 않음"
     return 0
   fi
