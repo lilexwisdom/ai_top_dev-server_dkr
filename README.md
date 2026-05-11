@@ -83,8 +83,20 @@ docker compose --profile ft run --rm finetune python train.py
 
 ```bash
 docker compose --profile ft up -d finetune
-docker exec -it -u ${USERNAME} finetune bash
+docker exec -it -u ${USERNAME} ${USERNAME}-finetune bash
 ```
+
+### IDE 사용 흐름 — 패턴 A 권장, B 부가
+
+**패턴 A (권장).** Cursor/VS Code 는 SSH 포트로 **dev 컨테이너** 에 Remote-SSH. 코드 편집·AI 기능은 dev 에서, 학습 실행은 dev 내 터미널의 `docker compose --profile ft run --rm finetune ...`. dev 는 24/7 살아있어 재접속 부담 0, GPU 점유는 학습 중에만. 워크스페이스(`~/Projects/dev-workspace`)는 dev/finetune 양쪽 모두 마운트되므로 파일이 즉시 공유.
+
+한계 — dev 에 transformers/peft/trl 미설치라 정적 import 분석 약함(Cursor AI 자체는 영향 없음, IDE 의 빨간줄만 표시).
+
+**패턴 B (부가).** 정밀 ML 코딩 세션(트레이너 클래스 커스터마이즈 등) 시 Cursor 의 "Remote-SSH → Attach to Running Container" 로 **finetune 에 직접 attach**. Python intellisense 완벽. 단점 — 세션 동안 GPU 점유, `restart: "no"` 라 매번 `compose up` 선행. 4–5명 공유 GPU 에선 짧은 정밀 작업에 한정 권장.
+
+### 학습 산출물 컨벤션
+
+체크포인트/모델은 `~/Projects/dev-workspace/finetune-output/<run-name>/` 에 저장. dev 와 finetune 양쪽에서 같은 경로로 보이므로 산출물 후처리(merge, GGUF 변환 등)는 dev 에서 이어서 가능.
 
 GPU·라이브러리 점검.
 
@@ -139,71 +151,56 @@ LAN까지 허용하려면 `docker-compose.yml`의 `${LAN_IP}` 줄 주석 해제.
 
 ## 같은 호스트의 일반 사용자가 본인 계정에서 띄울 때 (rootless docker)
 
-호스트 docker 그룹에 추가하지 않고, 각 사용자가 본인 systemd --user 단위로 개별 dockerd를 굴리는 방식. 호스트 dockerd는 무손상.
+호스트 docker 그룹에 추가하지 않고, 각 사용자가 본인 systemd --user 단위로 개별 dockerd를 굴리는 방식. 호스트 dockerd는 무손상. 셋업은 두 스크립트로 자동화.
 
-> 손으로 따라할 거면 [`Quick_setup.md`](Quick_setup.md). Claude Code로 자동 진행할 거면 [`docs/user-rootless-setup.md`](docs/user-rootless-setup.md) (검증 포함 runbook).
-
-### 한 번만 — 시스템 관리자 (lilexwisdom 또는 root)
+### 1) 머신 첫 셋업 — admin, 1회만
 
 ```bash
-# rootless docker 의존 패키지 + linger
-sudo apt install -y docker-ce-rootless-extras slirp4netns uidmap fuse-overlayfs
-sudo loginctl enable-linger <username1> <username2> ...
-
-# 호스트 dockerd의 whisper에 publish 추가 (ollama-whisper-webui_dkr/docker-compose.yml의 whisper에)
-# - 127.0.0.1: rootless docker 사용자 (slirp4netns가 호스트 lo로 매핑)
-# - 172.17.0.1: 호스트 dockerd 사용자 (docker0 게이트웨이) — `ip -4 addr show docker0`로 확인
-#   ports:
-#     - "127.0.0.1:8000:8000"
-#     - "172.17.0.1:8000:8000"
-# 그 후. cd ~/Projects/ollama-whisper-webui_dkr && docker compose up -d whisper
-
-# rootless GPU 전제 (finetune 사용자가 있으면)
-sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+sudo bash scripts/admin/host-bootstrap.sh
 ```
 
-### 사용자별 — 본인 셸에서 1회
+rootless docker 의존 패키지(`docker-ce-rootless-extras`, `slirp4netns`, `uidmap`, `fuse-overlayfs`, `nvidia-container-toolkit`) 설치, `/etc/cdi/nvidia.yaml` 생성, `/etc/devstack/` 레지스트리(`port-registry.tsv`, `users.tsv`, `host-network.env`) 초기화. 멱등.
+
+이후 `/etc/devstack/host-network.env` 의 `TAILSCALE_IP=` 한 줄을 본인 머신의 Tailscale IP 로 채워 두면 신규 사용자 추가 시 자동 주입.
+
+별도로 호스트 dockerd 의 whisper 컨테이너가 publish 돼 있어야 함 (rootless 사용자가 host.docker.internal 로 도달하는 경로).
+
+```yaml
+# ollama-whisper-webui_dkr/docker-compose.yml 의 whisper.ports
+# - "127.0.0.1:8000:8000"
+# - "172.17.0.1:8000:8000"
+```
+
+### 2) 사용자 추가 — admin, 사용자별 1회
+
+호스트 OS 계정은 이미 생성됐다고 가정(`sudo adduser <username>` 별도). 사용자 노트북 공개키 1줄을 받아서.
 
 ```bash
-# rootless dockerd 설치
-dockerd-rootless-setuptool.sh install
-systemctl --user enable --now docker
+# 옵션 A — pubkey 파일 경로
+sudo bash scripts/admin/add-user.sh <username> /tmp/<username>.pub
 
-# 셸 환경 (영구화)
-echo 'export PATH=/usr/bin:$PATH' >> ~/.bashrc
-echo 'export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock' >> ~/.bashrc
-source ~/.bashrc
-docker info | grep -E "Rootless|Cgroup"      # Rootless: true 확인
+# 옵션 B — stdin (파이프)
+cat ~/keys/<username>.pub | sudo bash scripts/admin/add-user.sh <username> -
 
-# (finetune 필요 시) GPU 활성화
-nvidia-ctk runtime configure --runtime=docker --config=$HOME/.config/docker/daemon.json
-systemctl --user restart docker
-docker run --rm --device nvidia.com/gpu=all nvcr.io/nvidia/pytorch:25.11-py3 nvidia-smi
-
-# repo clone & 첫 기동
-cd ~ && git clone <repo> dev-server_dkr && cd dev-server_dkr
-cp .env.example .env
-# .env에 본인 값 작성
-#   USERNAME=<본인 계정명>
-#   USER_UID=<id -u>
-#   USER_GID=<id -g>
-#   DOCKER_GID=<id -g>                         # rootless라 본인 GID
-#   DOCKER_SOCK=/run/user/$(id -u)/docker.sock
-#   SSH_PORT_LOCAL=<관리자에게 받은 포트>      # 사용자별 분배
-#   SSH_PORT_TS=<관리자에게 받은 포트>
-#   TAILSCALE_IP=<관리자에게 받기>             # 호스트 단위라 모두 동일
-
-mkdir -p ~/Projects/dev-workspace
-mkdir -p ~/.ssh && chmod 700 ~/.ssh
-# ~/.ssh/authorized_keys 본인 공개키 등록 필수
-
-docker compose build dev
-docker compose up -d dev
-
-# finetune이 필요한 경우
-docker compose --profile ft build finetune
-docker compose --profile ft up -d finetune
+# 이미 동작 중인 사용자를 레지스트리에만 backfill (재셋업 안 함)
+sudo bash scripts/admin/add-user.sh <username> --backfill-only <port>
 ```
+
+linger 활성 → subuid/subgid 확인 → 포트 자동 할당(`/etc/devstack/port-registry.tsv` + flock) → `~<user>/.ssh/authorized_keys` append → `~<user>/.devstack-bootstrap` 작성. 마지막에 사용자에게 안내할 한 줄 출력.
+
+### 3) 사용자 본인 셋업 — 사용자 셸에서 1회
+
+```bash
+ssh <YOUR_USER>@<HOST_IP>
+git clone https://github.com/lilexwisdom/ai_top_dev-server_dkr.git ~/dev-server_dkr
+bash ~/dev-server_dkr/scripts/user/setup.sh           # dev 만
+# 또는
+bash ~/dev-server_dkr/scripts/user/setup.sh --gpu --ft   # finetune 까지
+```
+
+스크립트가 자동으로. `dockerd-rootless-setuptool.sh install` → `systemctl --user enable --now docker` → `.bashrc` 의 `DOCKER_HOST`/`PATH` → (옵션) GPU 활성화 → `.env` 자동 렌더 → `~/Projects/dev-workspace` 생성 → `docker compose build/up dev` → healthy 폴링 → (옵션) finetune 이미지 빌드 + CUDA 스모크 → 검증·완료 보고. 멱등(두 번 돌리면 모두 `[skip]`).
+
+> 손으로 따라가야 할 때 (자동화 깨짐, 단계 이해 필요) 는 [`Quick_setup.md`](Quick_setup.md), [`docs/manual-setup.md`](docs/manual-setup.md) 또는 [`docs/user-rootless-setup.md`](docs/user-rootless-setup.md).
 
 이미지는 user-specific(host UID와 묶임)이라 사용자별로 빌드. image tag(`devstack-dev:${USERNAME}`)와 container_name(`${USERNAME}-dev`)이 사용자별로 분리되므로 같은 호스트에서 다중 사용자가 충돌 없이 동시 운영 가능.
 
@@ -215,14 +212,24 @@ dev-server_dkr/
 ├── .env.example
 ├── .gitignore
 ├── README.md
+├── Quick_setup.md          # 신규 사용자 진입점 (자동화 wrapper)
 ├── checklist.md            # 작업 체크리스트
 ├── context-notes.md        # 결정·근거·함정 기록
 ├── dev/
 │   ├── Dockerfile
 │   ├── entrypoint.sh
 │   └── sshd_config
-└── finetune/
-    └── Dockerfile
+├── finetune/
+│   └── Dockerfile
+├── docs/
+│   ├── manual-setup.md         # 아카이브 — 손 셋업 가이드
+│   └── user-rootless-setup.md  # Claude Code runbook (fallback)
+└── scripts/
+    ├── lib/common.sh           # 공통 헬퍼 (log, kv_upsert, flock)
+    ├── admin/
+    │   ├── host-bootstrap.sh   # 머신 1회 root 셋업
+    │   └── add-user.sh         # 사용자 추가 시 root 셋업
+    └── user/setup.sh           # 사용자 본인 1회 셋업 (--gpu --ft)
 ```
 
 ## 참고 핀

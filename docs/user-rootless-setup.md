@@ -1,6 +1,8 @@
 <!-- 일반 사용자가 본인 계정에서 rootless docker 기반 dev/finetune 컨테이너를 셋업하기 위한 단계별 runbook. Claude Code가 읽고 그대로 실행 가능하도록 작성. -->
 # 사용자 셋업 — Rootless Docker 기반 dev/finetune 컨테이너
 
+> **자동화됨.** `scripts/user/setup.sh [--gpu] [--ft]` 가 아래 Phase 0–7 을 멱등으로 수행. 이 문서는 디버깅·단계 이해·자동화가 깨졌을 때의 fallback 으로 보존.
+
 > 이 문서를 읽고 있는 너는 Claude Code다. 사용자 본인의 일반 계정에서 본인 전용 dev 컨테이너를 띄우는 작업을 한다. 호스트 관리자(이하 "관리자")가 별도 채널로 사용자에게 전달한 값(Tailscale IP, LAN IP, 할당된 SSH 포트)이 있어야 .env 작성이 가능하다 — 사용자가 갖고 있지 않으면 멈추고 받아오라고 안내.
 
 ## 너에게 주는 지시
