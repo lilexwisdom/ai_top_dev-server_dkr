@@ -42,6 +42,26 @@ parse_args() {
   fi
 }
 
+# 호스트 rootful dockerd 가 살아있고 본인이 접근 가능하면 admin(rootful 사용자) 가능성 큼.
+# 이 경우 dockerd-rootless-setuptool 이 설치를 거부하므로 친절 안내 후 종료.
+guard_against_rootful_admin() {
+  if [ -S /var/run/docker.sock ] && [ -r /var/run/docker.sock ]; then
+    cat <<EOF
+
+이 머신에서는 호스트 rootful docker(/var/run/docker.sock)가 동작 중이고 본인 계정이 접근 가능.
+이 경우 dockerd-rootless-setuptool.sh 가 설치를 거부함 — setup.sh 는 rootless 사용자용 자동화.
+
+너의 셋업 (admin, rootful 호스트 dockerd) 검증은 별도 명령.
+  docker ps --filter "name=\$(whoami)-dev" --format '{{.Status}}'
+  docker exec \$(whoami)-dev curl -s -o /dev/null -w "ollama: %{http_code}\n" http://host.docker.internal:11434/api/tags
+  docker exec \$(whoami)-dev curl -s -o /dev/null -w "whisper: %{http_code}\n" http://host.docker.internal:8000/v1/models
+
+자동화 흐름의 진짜 셀프 테스트는 신규(rootless) 사용자가 추가될 때 그 사용자가 setup.sh 를 돌리는 시점.
+EOF
+    exit 0
+  fi
+}
+
 # 부트스트랩 파일 (admin 의 add-user.sh 가 생성) 로드. SSH_PORT_TS/TAILSCALE_IP/LAN_IP 변수가 셀에 들어옴.
 load_bootstrap() {
   local f="$HOME/.devstack-bootstrap"
@@ -234,6 +254,7 @@ main() {
   require_not_root
   parse_args "$@"
   log_info "사용자 셋업 시작 (gpu=$WANT_GPU ft=$WANT_FT)"
+  guard_against_rootful_admin
   load_bootstrap
   ensure_rootless_docker
   ensure_shell_env
