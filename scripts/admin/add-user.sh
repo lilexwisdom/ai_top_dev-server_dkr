@@ -189,8 +189,9 @@ write_user_bootstrap() {
   local lanip=${LAN_IP:-}
   local host_net="$DEVSTACK_DIR/host-network.env"
   if [ -f "$host_net" ]; then
-    [ -n "$tsip" ]  || tsip=$(grep -E '^TAILSCALE_IP=' "$host_net" | head -1 | cut -d= -f2- || true)
-    [ -n "$lanip" ] || lanip=$(grep -E '^LAN_IP='      "$host_net" | head -1 | cut -d= -f2- || true)
+    # 선두/말미 공백 관대 처리 (sudoedit/포맷터가 들여쓰기 넣어도 동작)
+    [ -n "$tsip" ]  || tsip=$(grep -E '^[[:space:]]*TAILSCALE_IP=' "$host_net" | head -1 | sed -E 's/^[[:space:]]*TAILSCALE_IP=//; s/[[:space:]]+$//' || true)
+    [ -n "$lanip" ] || lanip=$(grep -E '^[[:space:]]*LAN_IP='      "$host_net" | head -1 | sed -E 's/^[[:space:]]*LAN_IP=//;      s/[[:space:]]+$//' || true)
   fi
 
   if [ -z "$tsip" ]; then
