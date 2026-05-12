@@ -187,8 +187,10 @@ build_finetune() {
 verify_dev() {
   printf '\n=== dev 검증 ===\n'
   local fail=0
-  if docker info 2>/dev/null | grep -qE "^ Rootless: true"; then
-    log_ok "Rootless: true"
+  # Docker 29.x 부터 `Rootless: true` 라인이 사라지고 Security Options 의 `rootless` 만 남음.
+  # Security Options 매칭은 25.x 이전부터 안정 출력이라 두 버전 모두 동작.
+  if docker info 2>/dev/null | grep -qE '^[[:space:]]+rootless[[:space:]]*$'; then
+    log_ok "Rootless 데몬 확인"
   else
     log_fail "Rootless 아님 — DOCKER_HOST 또는 dockerd 상태 점검"
     fail=1
