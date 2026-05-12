@@ -22,7 +22,9 @@ services:
     hostname: dev
     init: true
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # rootless 컨테이너는 호스트 docker0(host-gateway) 로 라우팅 못 함 (자체 bridge 사용).
+      # Tailscale 자기 IP 는 호스트 자기 자신에서도 로컬 라우팅되므로 rootful/rootless 양쪽에서 동작.
+      - "host.docker.internal:${TAILSCALE_IP}"
     ports:
       # SSH는 Tailscale IP에만 publish. 호스트 자기 자신에서도 ssh -p PORT user@${TAILSCALE_IP}로 접속 가능
       # (Tailscale이 자기 IP는 로컬 라우팅함). rootless docker는 같은 host port를 두 IP에 동시
@@ -71,7 +73,8 @@ services:
       memlock: -1
       stack: 67108864
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # dev 와 동일 이유로 Tailscale 자기 IP 로 매핑 (rootless 호환).
+      - "host.docker.internal:${TAILSCALE_IP}"
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - HF_HOME=/home/${USERNAME:-dev}/.cache/huggingface
